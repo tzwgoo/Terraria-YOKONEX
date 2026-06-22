@@ -1,6 +1,6 @@
 author = 辞年
 displayName = Terraria 役次元 IM 联动
-homepage = https://tmodloader.net/
+homepage = https://github.com/tzwgoo/Terraria-YOKONEX
 hideCode = false
 hideResources = false
 includeSource = true
