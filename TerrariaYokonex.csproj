@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\tModLoader.targets" />
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <AssemblyName>TerrariaYokonex</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>annotations</Nullable>
+  </PropertyGroup>
+
+  <Target Name="CopyPrecompiledForTmlUi" AfterTargets="Build">
+    <PropertyGroup>
+      <TmlUiPrecompiledDir>$(ProjectDir)bin\$(Configuration)\net8.0\</TmlUiPrecompiledDir>
+    </PropertyGroup>
+
+    <!-- tModLoader 游戏内的 Build/Reload 更偏好读取 net8.0 目录里的预编译 DLL，
+         这里继续同步一份过去，避免游戏内热重载时拿到旧产物。 -->
+    <MakeDir Directories="$(TmlUiPrecompiledDir)" />
+    <Copy SourceFiles="$(TargetDir)$(AssemblyName).dll" DestinationFolder="$(TmlUiPrecompiledDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(TargetDir)$(AssemblyName).pdb" DestinationFolder="$(TmlUiPrecompiledDir)" Condition="Exists('$(TargetDir)$(AssemblyName).pdb')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(TargetDir)$(AssemblyName).deps.json" DestinationFolder="$(TmlUiPrecompiledDir)" Condition="Exists('$(TargetDir)$(AssemblyName).deps.json')" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

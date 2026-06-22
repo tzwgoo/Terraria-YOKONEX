@@ -1,0 +1,10 @@
+author = 辞年
+displayName = Terraria 役次元 IM 联动
+homepage = https://tmodloader.net/
+hideCode = false
+hideResources = false
+includeSource = true
+includePDB = true
+side = Both
+buildIgnore = *.csproj, *.user, obj\*, bin\*, .vs\*, .git\*, README.md, AGENTS.md, docs\*
+version = 0.1.0
