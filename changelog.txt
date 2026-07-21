@@ -1,8 +1,7 @@
 0.2.0
 
-- 接入本地 Yokonex-ModHub 网关
+- 接入本地 Yokonex-Gamehub 网关
 - 支持从 GameHub 同步事件开关和 commandId
 - 支持 19 类泰拉瑞亚游戏事件
 - 支持在 GameHub 中为事件配置设备波形
 - 移除 Mod 对公网 IM 登录凭据和会话的直接依赖
-

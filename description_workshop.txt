@@ -1,10 +1,10 @@
 [h1]Terraria 役次元 IM 联动[/h1]
 
-将 Terraria 游戏事件转发到本机 Yokonex-ModHub，并由 GameHub 统一触发役次元 IM 指令和设备波形。
+将 Terraria 游戏事件转发到本机 Yokonex-Gamehub，并由 Gamehub 统一触发役次元 IM 指令和设备波形。
 
 [h2]使用前提[/h2]
 
-本 Mod 需要同时运行 Yokonex-ModHub。
+本 Mod 需要同时运行 Yokonex-Gamehub。
 请在 GameHub 插件中心启用“泰拉瑞亚”，并为需要的事件选择 commandId 和触发波形。
 
 [h2]支持事件[/h2]
@@ -33,7 +33,7 @@
 [h2]0.2.0 更新[/h2]
 
 [list]
-[*]接入本地 Yokonex-ModHub 网关
+[*]接入本地 Yokonex-Gamehub 网关
 [*]从 GameHub 同步事件开关和 commandId
 [*]支持 19 类游戏事件及波形配置
 [*]不再由 Mod 直接登录公网 IM

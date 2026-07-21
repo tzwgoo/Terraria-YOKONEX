@@ -1,5 +1,5 @@
 这是一个将 Terraria 游戏事件转发到役次元的 IM 联动 Mod。
 支持采集玩家受伤、死亡、复活、Boss 出现/击败、昼夜切换、血月、入侵和拾取物品等事件，
-并通过本机 Yokonex-ModHub 统一发送 IM 指令和设备波形。
+并通过本机 Yokonex-Gamehub 统一发送 IM 指令和设备波形。
 
 Mod 作者：辞年

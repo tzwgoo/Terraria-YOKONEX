@@ -1,8 +1,8 @@
 # Terraria 役次元 IM 联动
 
-一个基于 `tModLoader 1.4.4 stable` 构建的 Terraria 联动 Mod，用于采集游戏内事件，并通过本机 Yokonex-ModHub 转发 IM 指令和设备波形。
+一个基于 `tModLoader 1.4.4 stable` 构建的 Terraria 联动 Mod，用于采集游戏内事件，并通过本机 Yokonex-Gamehub 转发 IM 指令和设备波形。
 
-当前版本不直接登录公网 IM，连接、commandId 和波形均由 Yokonex-ModHub 统一管理。
+当前版本不直接登录公网 IM，连接、commandId 和波形均由 Yokonex-Gamehub 统一管理。
 
 ## 项目简介
 
@@ -14,7 +14,7 @@
 ## 当前功能
 
 - 采集 Terraria 游戏内关键事件
-- 从 Yokonex-ModHub 同步事件开关和 `commandId`
+- 从 Yokonex-Gamehub 同步事件开关和 `commandId`
 - 通过本机 WebSocket 发送标准 GameHub 事件
 - 提供图形化配置界面管理连接与规则
 - 支持运行时手动登录、退出登录和测试事件注入
@@ -23,7 +23,7 @@
 
 1. 将 Mod 放入 tModLoader 并进入游戏世界
 2. 使用 `/yokonex config` 打开配置界面
-3. 保持 Yokonex-ModHub 运行，并在插件中心启用“泰拉瑞亚”
+3. 保持 Yokonex-Gamehub 运行，并在插件中心启用“泰拉瑞亚”
 4. 在 GameHub 中配置事件 commandId 和波形
 5. 使用 `/yokonex trigger <eventKey> [matchValue]` 或实际游戏行为验证联动
 

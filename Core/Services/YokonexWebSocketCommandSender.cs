@@ -67,7 +67,7 @@ namespace TerrariaYokonex.Core.Services
             {
                 await CleanupSocketAsync();
                 _nextConfigRefreshAt = DateTimeOffset.MinValue;
-                return Failure("Yokonex-ModHub 暂不可用: " + ex.Message);
+                return Failure("Yokonex-Gamehub 暂不可用: " + ex.Message);
             }
             finally
             {
@@ -82,12 +82,12 @@ namespace TerrariaYokonex.Core.Services
             {
                 await RefreshConfigAsync(settings, cancellationToken, true);
                 await EnsureConnectedAsync(settings, cancellationToken);
-                return Success("已连接 Yokonex-ModHub");
+                return Success("已连接 Yokonex-Gamehub");
             }
             catch (Exception ex)
             {
                 await CleanupSocketAsync();
-                return Failure("连接 Yokonex-ModHub 失败: " + ex.Message);
+                return Failure("连接 Yokonex-Gamehub 失败: " + ex.Message);
             }
             finally
             {
@@ -101,7 +101,7 @@ namespace TerrariaYokonex.Core.Services
             try
             {
                 await CleanupSocketAsync();
-                return Success("已断开 Yokonex-ModHub");
+                return Success("已断开 Yokonex-Gamehub");
             }
             finally
             {
