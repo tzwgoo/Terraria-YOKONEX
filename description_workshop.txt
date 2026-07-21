@@ -1,0 +1,42 @@
+[h1]Terraria 役次元 IM 联动[/h1]
+
+将 Terraria 游戏事件转发到本机 Yokonex-ModHub，并由 GameHub 统一触发役次元 IM 指令和设备波形。
+
+[h2]使用前提[/h2]
+
+本 Mod 需要同时运行 Yokonex-ModHub。
+请在 GameHub 插件中心启用“泰拉瑞亚”，并为需要的事件选择 commandId 和触发波形。
+
+[h2]支持事件[/h2]
+
+[list]
+[*]玩家被 NPC 或弹射物击中
+[*]玩家受伤、死亡和复活
+[*]拾取物品
+[*]白天和夜晚开始
+[*]血月、日食、雨和史莱姆雨
+[*]入侵开始和完成
+[*]Boss 出现和击败
+[/list]
+
+[h2]快速测试[/h2]
+
+进入游戏世界后输入：
+[code]/yokonex trigger player_hurt[/code]
+
+若 GameHub 已运行且泰拉瑞亚联动已启用，对应事件会按照 GameHub 中的配置触发。
+
+[h2]项目主页[/h2]
+
+[url=https://github.com/tzwgoo/Terraria-YOKONEX]GitHub 源码与使用说明[/url]
+
+[h2]0.2.0 更新[/h2]
+
+[list]
+[*]接入本地 Yokonex-ModHub 网关
+[*]从 GameHub 同步事件开关和 commandId
+[*]支持 19 类游戏事件及波形配置
+[*]不再由 Mod 直接登录公网 IM
+[/list]
+
+Mod 作者：辞年
