@@ -7,4 +7,4 @@ includeSource = true
 includePDB = true
 side = Both
 buildIgnore = *.csproj, *.user, obj\*, bin\*, .vs\*, .git\*, README.md, AGENTS.md, docs\*
-version = 0.1.0
+version = 0.2.0

@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Net.Http;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -12,66 +14,60 @@ namespace TerrariaYokonex.Core.Services
 {
     public sealed class YokonexWebSocketCommandSender : IDisposable
     {
+        private static readonly Uri AdapterConfigUri = new Uri("http://127.0.0.1:43002/v1/game-integrations/terraria/adapter-config");
         private readonly SemaphoreSlim _sessionLock = new SemaphoreSlim(1, 1);
+        private readonly HttpClient _http = new HttpClient();
+        private readonly string _sessionId = "terraria-" + Guid.NewGuid().ToString("N");
         private ClientWebSocket? _socket;
-        private string _loggedInUserId = string.Empty;
-        private string _activeWsUrl = string.Empty;
-        private string _activeUid = string.Empty;
-        private string _activeToken = string.Empty;
+        private AdapterConfig _config = new AdapterConfig();
+        private DateTimeOffset _nextConfigRefreshAt = DateTimeOffset.MinValue;
+        private string _activeEndpoint = string.Empty;
 
         public async Task<YokonexDispatchResult> SendCommandAsync(
             YokonexWebSocketSettings settings,
             YokonexRouteRule rule,
+            TerrariaEventRecord eventRecord,
             CancellationToken cancellationToken)
         {
-            if (string.IsNullOrWhiteSpace(rule.CommandId))
-            {
-                return new YokonexDispatchResult
-                {
-                    Success = false,
-                    Message = "WebSocket 输出配置不完整",
-                };
-            }
-
             await _sessionLock.WaitAsync(cancellationToken);
             try
             {
-                // 事件发送前先确保 IM 会话可复用，避免每条事件都重复登录退出。
-                YokonexDispatchResult loginResult = await EnsureLoggedInAsync(settings, cancellationToken);
-                if (!loginResult.Success || _socket == null || string.IsNullOrWhiteSpace(_loggedInUserId))
+                await RefreshConfigAsync(settings, cancellationToken);
+                if (!_config.Enabled)
                 {
-                    return loginResult;
+                    return Success("GameHub 中的泰拉瑞亚联动已停用");
                 }
 
-                using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                linkedCts.CancelAfter(TimeSpan.FromMilliseconds(Math.Max(1000, settings.ReceiveTimeoutMs)));
-
-                await SendJsonAsync(_socket, new
+                if (!_config.Mappings.TryGetValue(eventRecord.EventKey, out string? commandId) || string.IsNullOrWhiteSpace(commandId))
                 {
-                    type = "sendCommand",
-                    userId = _loggedInUserId,
-                    commandId = rule.CommandId,
-                }, linkedCts.Token);
+                    return Success("该事件已在 GameHub 中停用");
+                }
 
-                return await WaitForResultAsync(_socket, "commandResult", linkedCts.Token, message =>
+                await EnsureConnectedAsync(settings, cancellationToken);
+                string eventId = Guid.NewGuid().ToString("N");
+                await SendJsonAsync(_socket!, new
                 {
-                    bool success = message.RootElement.TryGetProperty("success", out JsonElement successElement) &&
-                                   successElement.GetBoolean();
-                    return new YokonexDispatchResult
+                    source = "terraria",
+                    eventKey = eventRecord.EventKey,
+                    commandId,
+                    occurredAt = eventRecord.OccurredAt.ToUniversalTime().ToString("O"),
+                    sessionId = _sessionId,
+                    eventId,
+                    matchValue = string.IsNullOrWhiteSpace(eventRecord.MatchValue) ? null : eventRecord.MatchValue,
+                    data = new
                     {
-                        Success = success,
-                        Message = ReadMessage(message, success ? "指令发送成功" : "指令发送失败"),
-                    };
-                });
+                        displayText = eventRecord.DisplayText,
+                        amount = eventRecord.Amount,
+                    },
+                }, cancellationToken);
+
+                return await WaitForEventResultAsync(_socket!, eventId, settings, cancellationToken);
             }
             catch (Exception ex)
             {
                 await CleanupSocketAsync();
-                return new YokonexDispatchResult
-                {
-                    Success = false,
-                    Message = "WebSocket 指令发送异常: " + ex.Message,
-                };
+                _nextConfigRefreshAt = DateTimeOffset.MinValue;
+                return Failure("Yokonex-ModHub 暂不可用: " + ex.Message);
             }
             finally
             {
@@ -84,16 +80,14 @@ namespace TerrariaYokonex.Core.Services
             await _sessionLock.WaitAsync(cancellationToken);
             try
             {
-                return await EnsureLoggedInAsync(settings, cancellationToken);
+                await RefreshConfigAsync(settings, cancellationToken, true);
+                await EnsureConnectedAsync(settings, cancellationToken);
+                return Success("已连接 Yokonex-ModHub");
             }
             catch (Exception ex)
             {
                 await CleanupSocketAsync();
-                return new YokonexDispatchResult
-                {
-                    Success = false,
-                    Message = "WebSocket 登录异常: " + ex.Message,
-                };
+                return Failure("连接 Yokonex-ModHub 失败: " + ex.Message);
             }
             finally
             {
@@ -106,42 +100,8 @@ namespace TerrariaYokonex.Core.Services
             await _sessionLock.WaitAsync(cancellationToken);
             try
             {
-                if (_socket == null || _socket.State != WebSocketState.Open || string.IsNullOrWhiteSpace(_loggedInUserId))
-                {
-                    await CleanupSocketAsync();
-                    return new YokonexDispatchResult
-                    {
-                        Success = true,
-                        Message = "当前未登录",
-                    };
-                }
-
-                await SendJsonAsync(_socket, new
-                {
-                    type = "logout",
-                    userId = _loggedInUserId,
-                }, cancellationToken);
-
-                if (_socket.State == WebSocketState.Open || _socket.State == WebSocketState.CloseReceived)
-                {
-                    await _socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "logout", CancellationToken.None);
-                }
-
                 await CleanupSocketAsync();
-                return new YokonexDispatchResult
-                {
-                    Success = true,
-                    Message = "已退出登录",
-                };
-            }
-            catch (Exception ex)
-            {
-                await CleanupSocketAsync();
-                return new YokonexDispatchResult
-                {
-                    Success = false,
-                    Message = "WebSocket 退出登录异常: " + ex.Message,
-                };
+                return Success("已断开 Yokonex-ModHub");
             }
             finally
             {
@@ -149,194 +109,93 @@ namespace TerrariaYokonex.Core.Services
             }
         }
 
-        private async Task<YokonexDispatchResult> EnsureLoggedInAsync(
+        private async Task RefreshConfigAsync(
             YokonexWebSocketSettings settings,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            bool force = false)
         {
-            string resolvedUid = settings.ResolveUid();
-            if (!settings.Enabled)
+            if (!force && DateTimeOffset.UtcNow < _nextConfigRefreshAt)
             {
-                return new YokonexDispatchResult
-                {
-                    Success = false,
-                    Message = "WebSocket 输出未启用",
-                };
+                return;
             }
 
-            if (string.IsNullOrWhiteSpace(settings.WsUrl) ||
-                string.IsNullOrWhiteSpace(resolvedUid) ||
-                string.IsNullOrWhiteSpace(settings.Token))
+            using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromMilliseconds(Math.Max(1000, settings.ConnectTimeoutMs)));
+            string raw = await _http.GetStringAsync(AdapterConfigUri, timeout.Token);
+            AdapterConfig? loaded = JsonSerializer.Deserialize<AdapterConfig>(raw, new JsonSerializerOptions
             {
-                return new YokonexDispatchResult
-                {
-                    Success = false,
-                    Message = "WebSocket 输出配置不完整",
-                };
-            }
+                PropertyNameCaseInsensitive = true,
+            });
+            _config = loaded ?? throw new InvalidOperationException("GameHub 返回了无效配置");
+            _config.Mappings = new Dictionary<string, string>(_config.Mappings, StringComparer.OrdinalIgnoreCase);
+            _nextConfigRefreshAt = DateTimeOffset.UtcNow.AddSeconds(5);
+        }
 
-            if (_socket != null &&
-                _socket.State == WebSocketState.Open &&
-                string.Equals(_activeWsUrl, settings.WsUrl, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(_activeUid, resolvedUid, StringComparison.Ordinal) &&
-                string.Equals(_activeToken, settings.Token, StringComparison.Ordinal) &&
-                !string.IsNullOrWhiteSpace(_loggedInUserId))
+        private async Task EnsureConnectedAsync(YokonexWebSocketSettings settings, CancellationToken cancellationToken)
+        {
+            string endpoint = string.IsNullOrWhiteSpace(_config.Endpoint)
+                ? YokonexKnownValues.DefaultWebSocketUrl
+                : _config.Endpoint;
+            if (_socket != null && _socket.State == WebSocketState.Open &&
+                string.Equals(endpoint, _activeEndpoint, StringComparison.OrdinalIgnoreCase))
             {
-                // 连接参数未变化时直接复用当前登录态，减少频繁重连对下游服务的压力。
-                return new YokonexDispatchResult
-                {
-                    Success = true,
-                    Message = "已登录: " + _loggedInUserId,
-                };
+                return;
             }
 
             await CleanupSocketAsync();
-
-            using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            linkedCts.CancelAfter(TimeSpan.FromMilliseconds(Math.Max(1000, settings.ConnectTimeoutMs)));
-
-            ClientWebSocket socket = new ClientWebSocket();
-            await socket.ConnectAsync(new Uri(settings.WsUrl), linkedCts.Token);
-
-            linkedCts.CancelAfter(TimeSpan.FromMilliseconds(Math.Max(1000, settings.ReceiveTimeoutMs)));
-            await SendJsonAsync(socket, new
-            {
-                type = "login",
-                uid = resolvedUid,
-                token = settings.Token,
-            }, linkedCts.Token);
-
-            string resolvedUserId = settings.ResolveUserId();
-            YokonexDispatchResult loginResult = await WaitForResultAsync(socket, "loginResult", linkedCts.Token, message =>
-            {
-                if (!message.RootElement.TryGetProperty("success", out JsonElement successElement) ||
-                    !successElement.GetBoolean())
-                {
-                    return new YokonexDispatchResult
-                    {
-                        Success = false,
-                        Message = ReadMessage(message, "下游 WebSocket 登录失败"),
-                    };
-                }
-
-                if (message.RootElement.TryGetProperty("data", out JsonElement dataElement) &&
-                    dataElement.ValueKind == JsonValueKind.Object &&
-                    dataElement.TryGetProperty("userId", out JsonElement userIdElement))
-                {
-                    string? userId = userIdElement.GetString();
-                    if (!string.IsNullOrWhiteSpace(userId))
-                    {
-                        resolvedUserId = userId;
-                    }
-                }
-
-                return new YokonexDispatchResult
-                {
-                    Success = true,
-                    Message = "登录成功",
-                };
-            });
-
-            if (!loginResult.Success)
-            {
-                socket.Dispose();
-                return loginResult;
-            }
-
-            if (string.IsNullOrWhiteSpace(resolvedUserId))
-            {
-                socket.Dispose();
-                return new YokonexDispatchResult
-                {
-                    Success = false,
-                    Message = "WebSocket 登录成功，但没有拿到可用的 userId",
-                };
-            }
-
-            // 只有登录完全成功后才切换活动会话，避免异常时污染当前连接状态。
-            _socket = socket;
-            _loggedInUserId = resolvedUserId;
-            _activeWsUrl = settings.WsUrl;
-            _activeUid = resolvedUid;
-            _activeToken = settings.Token;
-
-            return new YokonexDispatchResult
-            {
-                Success = true,
-                Message = "已登录: " + resolvedUserId,
-            };
+            using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromMilliseconds(Math.Max(1000, settings.ConnectTimeoutMs)));
+            _socket = new ClientWebSocket();
+            await _socket.ConnectAsync(new Uri(endpoint), timeout.Token);
+            _activeEndpoint = endpoint;
         }
 
-        private async Task CleanupSocketAsync()
+        private static async Task<YokonexDispatchResult> WaitForEventResultAsync(
+            ClientWebSocket socket,
+            string eventId,
+            YokonexWebSocketSettings settings,
+            CancellationToken cancellationToken)
         {
-            if (_socket != null)
+            using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromMilliseconds(Math.Max(1000, settings.ReceiveTimeoutMs)));
+            while (true)
             {
-                try
+                string raw = await ReceiveMessageAsync(socket, timeout.Token);
+                using JsonDocument document = JsonDocument.Parse(raw);
+                JsonElement root = document.RootElement;
+                if (!root.TryGetProperty("type", out JsonElement type) || type.GetString() != "eventResult")
                 {
-                    if (_socket.State == WebSocketState.Open || _socket.State == WebSocketState.CloseReceived)
-                    {
-                        await _socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "cleanup", CancellationToken.None);
-                    }
+                    continue;
                 }
-                catch
+                if (root.TryGetProperty("eventId", out JsonElement returnedId) && returnedId.GetString() != eventId)
                 {
+                    continue;
                 }
-
-                _socket.Dispose();
-                _socket = null;
+                bool accepted = root.TryGetProperty("accepted", out JsonElement acceptedElement) && acceptedElement.GetBoolean();
+                string message = root.TryGetProperty("message", out JsonElement messageElement)
+                    ? messageElement.GetString() ?? (accepted ? "事件已接收" : "事件被拒绝")
+                    : (accepted ? "事件已接收" : "事件被拒绝");
+                return accepted ? Success(message) : Failure(message);
             }
-
-            _loggedInUserId = string.Empty;
-            _activeWsUrl = string.Empty;
-            _activeUid = string.Empty;
-            _activeToken = string.Empty;
         }
 
         private static async Task SendJsonAsync(ClientWebSocket socket, object payload, CancellationToken cancellationToken)
         {
-            string raw = JsonSerializer.Serialize(payload);
-            byte[] bytes = Encoding.UTF8.GetBytes(raw);
+            byte[] bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(payload));
             await socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, cancellationToken);
-        }
-
-        private static async Task<YokonexDispatchResult> WaitForResultAsync(
-            ClientWebSocket socket,
-            string expectedType,
-            CancellationToken cancellationToken,
-            Func<JsonDocument, YokonexDispatchResult> converter)
-        {
-            while (true)
-            {
-                string raw = await ReceiveMessageAsync(socket, cancellationToken);
-                using JsonDocument document = JsonDocument.Parse(raw);
-
-                if (!document.RootElement.TryGetProperty("type", out JsonElement typeElement))
-                {
-                    continue;
-                }
-
-                string? messageType = typeElement.GetString();
-                if (!string.Equals(messageType, expectedType, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                return converter(document);
-            }
         }
 
         private static async Task<string> ReceiveMessageAsync(ClientWebSocket socket, CancellationToken cancellationToken)
         {
             byte[] buffer = new byte[4096];
             using MemoryStream stream = new MemoryStream();
-
             while (true)
             {
                 WebSocketReceiveResult result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
-                    throw new InvalidOperationException("服务端主动关闭了 WebSocket 连接");
+                    throw new InvalidOperationException("GameHub 已断开连接");
                 }
-
                 stream.Write(buffer, 0, result.Count);
                 if (result.EndOfMessage)
                 {
@@ -345,19 +204,30 @@ namespace TerrariaYokonex.Core.Services
             }
         }
 
-        private static string ReadMessage(JsonDocument document, string fallback)
+        private async Task CleanupSocketAsync()
         {
-            if (document.RootElement.TryGetProperty("message", out JsonElement messageElement))
+            ClientWebSocket? old = _socket;
+            _socket = null;
+            _activeEndpoint = string.Empty;
+            if (old == null)
             {
-                string? message = messageElement.GetString();
-                if (!string.IsNullOrWhiteSpace(message))
+                return;
+            }
+            try
+            {
+                if (old.State == WebSocketState.Open)
                 {
-                    return message;
+                    await old.CloseAsync(WebSocketCloseStatus.NormalClosure, "disconnect", CancellationToken.None);
                 }
             }
-
-            return fallback;
+            catch
+            {
+            }
+            old.Dispose();
         }
+
+        private static YokonexDispatchResult Success(string message) => new YokonexDispatchResult { Success = true, Message = message };
+        private static YokonexDispatchResult Failure(string message) => new YokonexDispatchResult { Success = false, Message = message };
 
         public void Dispose()
         {
@@ -371,16 +241,17 @@ namespace TerrariaYokonex.Core.Services
             }
             finally
             {
-                try
-                {
-                    _sessionLock.Release();
-                }
-                catch
-                {
-                }
-
+                try { _sessionLock.Release(); } catch { }
+                _http.Dispose();
                 _sessionLock.Dispose();
             }
+        }
+
+        private sealed class AdapterConfig
+        {
+            public bool Enabled { get; set; }
+            public string Endpoint { get; set; } = YokonexKnownValues.DefaultWebSocketUrl;
+            public Dictionary<string, string> Mappings { get; set; } = new Dictionary<string, string>();
         }
     }
 }

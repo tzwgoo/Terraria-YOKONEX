@@ -2,9 +2,9 @@ namespace TerrariaYokonex.Core.Config
 {
     public static class YokonexKnownValues
     {
-        public const string DefaultWebSocketUrl = "ws://103.236.55.92:43001/";
+        public const string DefaultWebSocketUrl = "ws://127.0.0.1:43002/v1/events";
 
-        public const string LegacyLocalWebSocketUrl = "ws://127.0.0.1:43001/";
+        public const string LegacyLocalWebSocketUrl = "ws://103.236.55.92:43001/";
 
         public static readonly string[] SupportedEventKeys =
         {

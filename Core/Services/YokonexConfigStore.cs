@@ -82,12 +82,9 @@ namespace TerrariaYokonex.Core.Services
             settings.WebSocket ??= new YokonexWebSocketSettings();
             routes.Rules ??= new List<YokonexRouteRule>();
 
-            settings.WebSocket.WsUrl = NormalizeString(settings.WebSocket.WsUrl, YokonexKnownValues.DefaultWebSocketUrl);
-            if (string.Equals(settings.WebSocket.WsUrl, YokonexKnownValues.LegacyLocalWebSocketUrl, StringComparison.OrdinalIgnoreCase))
-            {
-                // 旧版本默认写的是本地地址，这里在加载时自动迁移到当前要求的默认公网地址。
-                settings.WebSocket.WsUrl = YokonexKnownValues.DefaultWebSocketUrl;
-            }
+            // GameHub 统一负责 IM 登录和设备输出，Mod 只允许连接本机事件入口。
+            settings.WebSocket.Enabled = true;
+            settings.WebSocket.WsUrl = YokonexKnownValues.DefaultWebSocketUrl;
 
             settings.WebSocket.Uid = NormalizeString(settings.WebSocket.Uid);
             settings.WebSocket.Token = NormalizeString(settings.WebSocket.Token);
@@ -159,11 +156,11 @@ namespace TerrariaYokonex.Core.Services
                 GlobalCooldownMs = 200,
                 WebSocket = new YokonexWebSocketSettings
                 {
-                    Enabled = false,
+                    Enabled = true,
                     WsUrl = YokonexKnownValues.DefaultWebSocketUrl,
-                    Uid = "game_123456",
-                    Token = "请替换为你的 TOKEN",
-                    UserId = "123456",
+                    Uid = string.Empty,
+                    Token = string.Empty,
+                    UserId = string.Empty,
                     ConnectTimeoutMs = 5000,
                     ReceiveTimeoutMs = 5000,
                 },
@@ -217,7 +214,8 @@ namespace TerrariaYokonex.Core.Services
                 {
                     Id = eventKey + "-im",
                     Notes = YokonexKnownValues.GetEventDisplayName(eventKey),
-                    Enabled = existingRule?.Enabled ?? false,
+                    // 单事件开关由 GameHub 管理，Mod 侧始终采集完整事件集。
+                    Enabled = true,
                     EventKey = eventKey,
                     MatchValue = string.Empty,
                     OutputMode = YokonexOutputModes.WebSocketCommand,

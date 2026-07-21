@@ -21,7 +21,7 @@ namespace TerrariaYokonex.Core.Config
 
     public sealed class YokonexWebSocketSettings
     {
-        public bool Enabled { get; set; } = false;
+        public bool Enabled { get; set; } = true;
 
         public string WsUrl { get; set; } = YokonexKnownValues.DefaultWebSocketUrl;
 

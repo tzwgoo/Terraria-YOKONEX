@@ -206,7 +206,7 @@ namespace TerrariaYokonex.Core.Services
                     continue;
                 }
 
-                YokonexDispatchResult result = await DispatchRuleAsync(snapshot.Settings, rule, cancellationToken);
+                YokonexDispatchResult result = await DispatchRuleAsync(snapshot.Settings, rule, eventRecord, cancellationToken);
                 if (result.Success)
                 {
                     anySuccess = true;
@@ -270,11 +270,12 @@ namespace TerrariaYokonex.Core.Services
         private async Task<YokonexDispatchResult> DispatchRuleAsync(
             YokonexRuntimeSettings settings,
             YokonexRouteRule rule,
+            TerrariaEventRecord eventRecord,
             CancellationToken cancellationToken)
         {
             if (string.Equals(rule.OutputMode, YokonexOutputModes.WebSocketCommand, StringComparison.OrdinalIgnoreCase))
             {
-                return await _webSocketSender.SendCommandAsync(settings.WebSocket, rule, cancellationToken);
+                return await _webSocketSender.SendCommandAsync(settings.WebSocket, rule, eventRecord, cancellationToken);
             }
 
             return new YokonexDispatchResult
